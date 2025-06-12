@@ -176,8 +176,91 @@ class InspectTool implements RecorderTool {
       this._recorder.setMode('recording');
       this._recorder.overlay?.flashToolSucceeded('assertingVisibility');
     } else {
+      // Copy selector to clipboard when picking locator
+      this._copyToClipboard(selector);
       this._recorder.elementPicked(selector, model);
     }
+  }
+
+  private _copyToClipboard(selector: string) {
+    try {
+      // Try modern clipboard API first
+      if (this._recorder.injectedScript.window.navigator.clipboard && this._recorder.injectedScript.window.navigator.clipboard.writeText) {
+        this._recorder.injectedScript.window.navigator.clipboard.writeText(selector).then(() => {
+          this._showCopySuccessMessage();
+        }).catch(() => {
+          // Fallback to legacy method if modern API fails
+          this._copyToClipboardFallback(selector);
+        });
+      } else {
+        // Use fallback method if modern API is not available
+        this._copyToClipboardFallback(selector);
+      }
+    } catch (error) {
+      // Silently fail - don't break the picker functionality
+      console.warn('Failed to copy selector to clipboard:', error);
+    }
+  }
+
+  private _copyToClipboardFallback(text: string) {
+    try {
+      const document = this._recorder.injectedScript.document;
+      const textArea = document.createElement('textarea');
+      textArea.style.position = 'absolute';
+      textArea.style.zIndex = '-1000';
+      textArea.style.opacity = '0';
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      const success = document.execCommand('copy');
+      textArea.remove();
+      if (success) {
+        this._showCopySuccessMessage();
+      }
+    } catch (error) {
+      // Silently fail - don't break the picker functionality
+      console.warn('Failed to copy selector to clipboard using fallback method:', error);
+    }
+  }
+
+  private _showCopySuccessMessage() {
+    // Create a temporary success message
+    const document = this._recorder.injectedScript.document;
+    const message = document.createElement('div');
+    message.textContent = '元素定位复制成功!';
+    message.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #4CAF50;
+      color: white;
+      padding: 12px 20px;
+      border-radius: 4px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      z-index: 999999;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    `;
+
+    document.body.appendChild(message);
+
+    // Animate in
+    requestAnimationFrame(() => {
+      message.style.opacity = '1';
+    });
+
+    // Remove after 2 seconds
+    setTimeout(() => {
+      message.style.opacity = '0';
+      setTimeout(() => {
+        if (message.parentNode) {
+          message.parentNode.removeChild(message);
+        }
+      }, 300);
+    }, 2000);
   }
 
   private _reset(userGesture: boolean) {
